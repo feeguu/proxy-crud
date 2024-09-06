@@ -1,54 +1,65 @@
-import { config } from "dotenv";
-config();
+import { config } from "dotenv"
+config()
 
-import express from "express";
-import { DatabaseFactory, DatabaseType } from "./config/database/DatabaseFactory";
-import { PostgresUserRepository } from "./repository/PostgresUserRepository";
-import { UserController } from "./controllers/user-controller";
-import bodyParser from "body-parser";
-import { CepService, CepServiceProxy } from "./services/cep-service";
-import { PostgresDatabase } from "./config/database/PostgresDatabase";
-import { RedisDatabase } from "./config/database/RedisDatabase";
-import { PostgresAdminRepository } from "./repository/PostgresAdminRepository";
-import { AuthController } from "./controllers/auth-controller";
-import { authMiddleware } from "./middlewares/auth";
-import { TokenService } from "./services/token-service";
+import express from "express"
+import { DatabaseFactory, DatabaseType } from "./config/database/DatabaseFactory"
+import { PostgresUserRepository } from "./repository/PostgresUserRepository"
+import { UserController } from "./controllers/user-controller"
+import bodyParser from "body-parser"
+import { CepService, CepServiceProxy } from "./services/cep-service"
+import { PostgresDatabase } from "./config/database/PostgresDatabase"
+import { RedisDatabase } from "./config/database/RedisDatabase"
+import { PostgresAdminRepository } from "./repository/PostgresAdminRepository"
+import { AuthController } from "./controllers/auth-controller"
+import { authMiddleware } from "./middlewares/auth"
+import { TokenService } from "./services/token-service"
 
-const app = express();
+const app = express()
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// CORS
+app.use((req, res, next) => {
+	res.header("Access-Control-Allow-Origin", "*")
+	res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+	res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-const database = DatabaseFactory.createDatabase(DatabaseType.POSTGRES);
-const cacheDatabase = DatabaseFactory.createDatabase(DatabaseType.REDIS);
+	if (req.method === "OPTIONS") {
+		return res.sendStatus(200)
+	}
 
-database.connect();
-cacheDatabase.connect();
+	next()
+})
 
-const cepService = new CepService();
-const cepServiceProxy = new CepServiceProxy(cepService, cacheDatabase as RedisDatabase);
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: true }))
 
-const tokenService = new TokenService(process.env.SECRET ?? "");
+const database = DatabaseFactory.createDatabase(DatabaseType.POSTGRES)
+const cacheDatabase = DatabaseFactory.createDatabase(DatabaseType.REDIS)
 
-const userRepository = new PostgresUserRepository(database as PostgresDatabase);
-const adminRepository = new PostgresAdminRepository(database as PostgresDatabase);
+database.connect()
+cacheDatabase.connect()
 
-const userController = new UserController(userRepository, cepServiceProxy);
-const authController = new AuthController(adminRepository, tokenService);
+const cepService = new CepService()
+const cepServiceProxy = new CepServiceProxy(cepService, cacheDatabase as RedisDatabase)
 
-app.post("/auth/login", authController.login.bind(authController));
-app.post("/auth/register", authController.register.bind(authController));
+const tokenService = new TokenService(process.env.SECRET ?? "")
 
-app.use("/users", authMiddleware);
+const userRepository = new PostgresUserRepository(database as PostgresDatabase)
+const adminRepository = new PostgresAdminRepository(database as PostgresDatabase)
 
-app.get("/users", userController.find.bind(userController));
-app.get("/users/:id", userController.findOne.bind(userController));
-app.post("/users", userController.save.bind(userController));
-app.patch("/users/:id", userController.update.bind(userController));
-app.delete("/users/:id", userController.delete.bind(userController));
+const userController = new UserController(userRepository, cepServiceProxy)
+const authController = new AuthController(adminRepository, tokenService)
 
+app.post("/auth/login", authController.login.bind(authController))
+app.post("/auth/register", authController.register.bind(authController))
+
+app.use("/users", authMiddleware)
+
+app.get("/users", userController.find.bind(userController))
+app.get("/users/:id", userController.findOne.bind(userController))
+app.post("/users", userController.save.bind(userController))
+app.patch("/users/:id", userController.update.bind(userController))
+app.delete("/users/:id", userController.delete.bind(userController))
 
 app.listen(process.env.PORT, () => {
-  console.log(`Server is running on port ${process.env.PORT}`);
-});
-
+	console.log(`Server is running on port ${process.env.PORT}`)
+})
